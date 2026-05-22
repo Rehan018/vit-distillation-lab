@@ -1,0 +1,31 @@
+experiment:
+  name: feature_kd
+
+teacher:
+  model: vit_large_patch16_224
+  embed_dim: 1024
+
+student:
+  model: vit_tiny_patch16_224
+  embed_dim: 192
+
+training:
+  batch_size: 8
+  epochs: 2
+  lr: 0.0001
+  subset_size: 100
+  seed: 42
+
+distillation:
+  type: feature_kd
+  temperature: 4.0
+  alpha: 0.7
+  
+feature_kd:
+  enabled: true
+  teacher_layers: [5, 11, 17, 23]
+  student_layers: [2, 5, 8, 11]
+  lambda_kd: 1.0
+  lambda_feature: 1.0
+  distill_cls: true
+  distill_patch: true
