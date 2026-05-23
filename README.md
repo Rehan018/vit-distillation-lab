@@ -339,7 +339,3 @@ New evaluation tasks can be added by:
 3. Creating an evaluation script following the existing pattern
 
 ---
-
-## IP Note
-
-Architecture and conceptual ideas developed in this project remain the intellectual property of the author. Code and analysis are shared for evaluation purposes.
