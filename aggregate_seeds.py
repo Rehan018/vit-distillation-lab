@@ -102,11 +102,11 @@ def main():
             sig = "Yes*" if p_value < 0.05 else "No"
 
             results[exp]["vs_baseline"] = {
-                "mean_diff": round(mean_diff, 2),
-                "cohens_d": round(d, 2),
-                "t_stat": round(t_stat, 3),
-                "p_value": round(p_value, 4),
-                "significant_p05": p_value < 0.05,
+                "mean_diff": round(float(mean_diff), 2),
+                "cohens_d": round(float(d), 2),
+                "t_stat": round(float(t_stat), 3),
+                "p_value": round(float(p_value), 4),
+                "significant_p05": bool(p_value < 0.05),
             }
 
             print(f"| {DISPLAY_NAMES[exp]} | +{mean_diff:.2f}% | {d:.2f} | "
