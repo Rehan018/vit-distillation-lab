@@ -55,21 +55,21 @@ The Feature KD λ ablation was designed specifically to test this.
 
 ### 1. Vanilla KD (Logit Distillation)
 
-$$\mathcal{L}_{\text{Vanilla}} = \alpha \mathcal{L}_{\text{CE}}(y_s, y) + (1 - \alpha) T^2 \mathcal{D}_{\text{KL}}\left(\sigma\left(\frac{z_s}{T}\right) \,\middle\|\, \sigma\left(\frac{z_t}{T}\right)\right)$$
+$$\mathcal{L}_{\text{Vanilla}} = \alpha \mathcal{L}_{\text{CE}}(y_s, y) + (1 - \alpha) T^2 \mathcal{D}_{\text{KL}}\left( \sigma\left(\frac{z_s}{T}\right) \parallel \sigma\left(\frac{z_t}{T}\right) \right)$$
 
 ### 2. Feature KD (Intermediate Feature Alignment)
 
-$$\mathcal{L}_{\text{Feature}} = \frac{1}{N} \sum_{i \in \text{layers}} \|F_t^{(i)} - W^{(i)} F_s^{(i)}\|_2^2$$
+$$\mathcal{L}_{\text{Feature}} = \frac{1}{N} \sum_{i \in \text{layers}} \Vert F_t^{(i)} - W^{(i)} F_s^{(i)} \Vert_2^2$$
 Learnable projection $W$ maps 192D student features to 1024D teacher space.
 
 ### 3. Attention KD (Self-Attention Map Matching)
 
-$$\mathcal{L}_{\text{Attention}} = \frac{1}{B} \sum_{b=1}^B \|\bar{A}_t^{(b)} - \bar{A}_s^{(b)}\|_F^2$$
+$$\mathcal{L}_{\text{Attention}} = \frac{1}{B} \sum_{b=1}^B \Vert \bar{A}_t^{(b)} - \bar{A}_s^{(b)} \Vert_F^2$$
 Attention maps averaged across heads (16→1, 3→1) before comparison.
 
 ### 4. Relational KD (Batch Geometry Matching)
 
-$$\mathcal{L}_{\text{Relational}} = \|G_t - G_s\|_F^2, \quad G_{j,k} = \frac{f_j \cdot f_k}{\|f_j\| \|f_k\|}$$
+$$\mathcal{L}_{\text{Relational}} = \Vert G_t - G_s \Vert_F^2, \quad G_{j,k} = \frac{f_j \cdot f_k}{\Vert f_j \Vert \Vert f_k \Vert}$$
 Matches cosine similarity structure across the batch rather than absolute coordinates.
 
 ---
