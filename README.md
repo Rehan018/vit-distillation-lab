@@ -11,6 +11,7 @@ A modular framework for comparing different knowledge distillation strategies fo
 This project compares four ViT distillation strategies under controlled conditions using a ViT-Large teacher and ViT-Tiny student. All methods are evaluated with frozen-backbone linear probing on two classification datasets (Oxford Pets, CIFAR-100) and frozen-backbone depth estimation on NYUv2.
 
 Key findings:
+
 - Feature KD with moderate constraint weight (λ=0.1) provides the best classification transfer, recovering ~41% of the teacher-student accuracy gap on Oxford Pets
 - Strong feature constraints (λ=1.0) cause representation collapse — lower reconstruction error does not mean better downstream performance
 - Teacher supervision acts as a powerful regularizer: the unguided baseline shows ~7× higher variance than Vanilla KD across seeds
@@ -30,10 +31,10 @@ Vision Transformers achieve strong performance but are expensive to deploy. Know
 
 The experimental design draws from:
 
-* **Hinton et al. (2015)** — introduced soft logit distillation via temperature-scaled KL divergence. Our Vanilla KD baseline implements this directly.
-* **ViTKD (Yang et al., CVPRW 2024)** — proposed intermediate feature alignment specifically for ViTs. This motivated our Feature KD implementation with learnable projection layers to bridge the 1024D→192D embedding gap.
-* **Zagoruyko & Komodakis (2017)** — attention transfer for CNNs. We adapted this to ViT self-attention maps, averaging across heads to handle the 16→3 head mismatch.
-* **Park et al. (2019, RKD)** — relational knowledge distillation using pairwise distance/angle matching. Our relational loss uses batch-wise cosine similarity matrices instead of absolute coordinates.
+- **Hinton et al. (2015)** — introduced soft logit distillation via temperature-scaled KL divergence. Our Vanilla KD baseline implements this directly.
+- **ViTKD (Yang et al., CVPRW 2024)** — proposed intermediate feature alignment specifically for ViTs. This motivated our Feature KD implementation with learnable projection layers to bridge the 1024D→192D embedding gap.
+- **Zagoruyko & Komodakis (2017)** — attention transfer for CNNs. We adapted this to ViT self-attention maps, averaging across heads to handle the 16→3 head mismatch.
+- **Park et al. (2019, RKD)** — relational knowledge distillation using pairwise distance/angle matching. Our relational loss uses batch-wise cosine similarity matrices instead of absolute coordinates.
 
 The project does not reproduce any single paper. Instead, it compares fundamentally different forms of supervision under identical training conditions to understand their relative strengths.
 
@@ -53,17 +54,21 @@ The Feature KD λ ablation was designed specifically to test this.
 ## Distillation Objectives
 
 ### 1. Vanilla KD (Logit Distillation)
+
 $$\mathcal{L}_{\text{Vanilla}} = \alpha \mathcal{L}_{\text{CE}}(y_s, y) + (1 - \alpha) T^2 \mathcal{D}_{\text{KL}}\left(\sigma\left(\frac{z_s}{T}\right) \,\middle\|\, \sigma\left(\frac{z_t}{T}\right)\right)$$
 
 ### 2. Feature KD (Intermediate Feature Alignment)
+
 $$\mathcal{L}_{\text{Feature}} = \frac{1}{N} \sum_{i \in \text{layers}} \|F_t^{(i)} - W^{(i)} F_s^{(i)}\|_2^2$$
 Learnable projection $W$ maps 192D student features to 1024D teacher space.
 
 ### 3. Attention KD (Self-Attention Map Matching)
+
 $$\mathcal{L}_{\text{Attention}} = \frac{1}{B} \sum_{b=1}^B \|\bar{A}_t^{(b)} - \bar{A}_s^{(b)}\|_F^2$$
 Attention maps averaged across heads (16→1, 3→1) before comparison.
 
 ### 4. Relational KD (Batch Geometry Matching)
+
 $$\mathcal{L}_{\text{Relational}} = \|G_t - G_s\|_F^2, \quad G_{j,k} = \frac{f_j \cdot f_k}{\|f_j\| \|f_k\|}$$
 Matches cosine similarity structure across the batch rather than absolute coordinates.
 
@@ -97,15 +102,19 @@ All evaluations use frozen backbone weights — only the lightweight head is tra
 ## Engineering Challenges
 
 ### Feature Dimension Mismatch
+
 ViT-Large (1024D) and ViT-Tiny (192D) use different embedding dimensions. Direct feature matching is impossible without projection. Implemented learnable linear projectors in `distillation/projector.py` to map student features into teacher space.
 
 ### Attention Extraction in timm
+
 timm's ViT uses fused scaled dot-product attention that doesn't expose raw attention matrices. Wrote custom monkey-patched forward in `utils/hooks.py` that manually computes Q·K^T attention and captures it during the forward pass. This was the most time-consuming engineering challenge — I first tried register_forward_hook but the fused kernel doesn't expose attention as intermediate state. The `scratch/inspect_attn.py` file shows the debugging I did to understand timm's attention internals.
 
 ### Attention Head Mismatch
+
 ViT-Large has 16 heads, ViT-Tiny has 3. Head-to-head matching is structurally impossible. Averaging across heads before computing MSE loss is a simplification, but it was stable and produced clear signal.
 
 ### Feature KD Collapse
+
 Early runs with λ_feature=1.0 collapsed to ~1% accuracy — the student was spending all its capacity minimizing reconstruction error instead of learning discriminative features. This directly motivated the λ ablation study.
 
 ---
@@ -170,6 +179,7 @@ The master script automatically generates comparison plots and copies them to th
 A key question from the assignment: do KD methods behave differently on classification vs. spatially-structured tasks?
 
 **Expected trends** (to be validated):
+
 - Attention KD directly transfers spatial structure (token-to-token attention patterns), so it should benefit depth estimation more than pure logit distillation
 - Relational KD preserves geometric relationships within the batch, which may generalize better to spatial tasks where inter-sample structure matters
 - Feature KD forces coordinate-level alignment, which could help or hurt spatial tasks depending on whether the projection layer preserves spatial information
@@ -193,29 +203,29 @@ Early experiments combined feature + attention + relational losses simultaneousl
 ## Project Structure
 
 ```text
-├── configs/                      # YAML experiment configurations
+├── configs/                      
 │   ├── baseline.yaml
 │   ├── kd_baseline.yaml
-│   ├── feature_kd_lam*.yaml      # λ ablation variants
-│   ├── attention_kd_only.yaml    # Isolated attention supervision
-│   └── relational_kd_only.yaml   # Isolated relational supervision
+│   ├── feature_kd_lam*.yaml      
+│   ├── attention_kd_only.yaml    
+│   └── relational_kd_only.yaml   
 │
 ├── models/
-│   ├── teacher.py                # ViT-Large wrapper (frozen)
-│   ├── student.py                # ViT-Tiny wrapper (trainable)
+│   ├── teacher.py                
+│   ├── student.py                
 │   └── heads/
 │       ├── classification_head.py
-│       ├── depth_head.py         # Conv decoder for NYUv2
-│       └── segmentation_head.py  # Conv decoder for VOC
+│       ├── depth_head.py         
+│       └── segmentation_head.py  
 │
 ├── distillation/
 │   ├── losses/
-│   │   ├── kd_loss.py            # KL divergence + CE
-│   │   ├── feature_loss.py       # MSE feature alignment
-│   │   ├── attention_loss.py     # Attention map MSE
-│   │   └── relational_loss.py    # Cosine similarity matching
-│   ├── trainer.py                # Multi-objective training loop
-│   └── projector.py              # Learnable feature projection
+│   │   ├── kd_loss.py           
+│   │   ├── feature_loss.py       
+│   │   ├── attention_loss.py     
+│   │   └── relational_loss.py    
+│   ├── trainer.py                
+│   └── projector.py              
 │
 ├── datasets/
 │   ├── oxford_pets.py
