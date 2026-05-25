@@ -50,6 +50,10 @@ class DistillationTrainer:
             self.projector.train()
             
         total_loss = 0.0
+        total_kd_loss = 0.0
+        total_feat_loss = 0.0
+        total_attn_loss = 0.0
+        total_rel_loss = 0.0
         
         pbar = tqdm(dataloader, desc="Training")
         for batch in pbar:
@@ -78,7 +82,8 @@ class DistillationTrainer:
                 
             student_outputs = self.student(inputs)
     
-            loss = self.criterion(student_outputs, teacher_outputs, targets) * self.lambda_kd
+            kd_loss_val = self.criterion(student_outputs, teacher_outputs, targets) * self.lambda_kd
+            loss = kd_loss_val
             
             feat_loss = None
             rel_loss = None
@@ -115,6 +120,13 @@ class DistillationTrainer:
             self.optimizer.step()
             
             total_loss += loss.item()
+            total_kd_loss += kd_loss_val.item()
+            if feat_loss is not None:
+                total_feat_loss += feat_loss.item()
+            if attn_loss is not None:
+                total_attn_loss += attn_loss.item()
+            if rel_loss is not None:
+                total_rel_loss += rel_loss.item()
             
             postfix = {"loss": f"{loss.item():.4f}"}
             if feat_loss is not None:
@@ -125,7 +137,14 @@ class DistillationTrainer:
                 postfix["rel_loss"] = f"{rel_loss.item():.4f}"
             pbar.set_postfix(postfix)
             
-        return total_loss / len(dataloader)
+        n_batches = max(1, len(dataloader))
+        return {
+            'loss': total_loss / n_batches,
+            'kd_loss': total_kd_loss / n_batches,
+            'feat_loss': total_feat_loss / n_batches,
+            'attn_loss': total_attn_loss / n_batches,
+            'rel_loss': total_rel_loss / n_batches
+        }
 
     def save_checkpoint(self, path, config=None, metrics=None):
     

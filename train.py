@@ -200,15 +200,38 @@ def main():
     logger.info("Starting distillation training loop...")
     epochs = config['training']['epochs']
     loss_trajectory = []
+    kd_loss_trajectory = []
+    feat_loss_trajectory = []
+    attn_loss_trajectory = []
+    rel_loss_trajectory = []
+    
     for epoch in range(epochs):
-        loss = trainer.train_epoch(train_loader)
+        epoch_metrics = trainer.train_epoch(train_loader)
         scheduler.step()
-        loss_trajectory.append(loss)
-        logger.info(f"Epoch {epoch+1}/{epochs} - Total Loss: {loss:.4f} - LR: {scheduler.get_last_lr()[0]:.6f}")
+        
+        loss_trajectory.append(epoch_metrics['loss'])
+        kd_loss_trajectory.append(epoch_metrics['kd_loss'])
+        feat_loss_trajectory.append(epoch_metrics['feat_loss'])
+        attn_loss_trajectory.append(epoch_metrics['attn_loss'])
+        rel_loss_trajectory.append(epoch_metrics['rel_loss'])
+        
+        logger.info(
+            f"Epoch {epoch+1}/{epochs} - "
+            f"Loss: {epoch_metrics['loss']:.4f} | "
+            f"KD: {epoch_metrics['kd_loss']:.4f} | "
+            f"Feat: {epoch_metrics['feat_loss']:.4f} | "
+            f"Attn: {epoch_metrics['attn_loss']:.4f} | "
+            f"Rel: {epoch_metrics['rel_loss']:.4f} - "
+            f"LR: {scheduler.get_last_lr()[0]:.6f}"
+        )
         
     metrics = {
         'final_train_loss': loss_trajectory[-1] if loss_trajectory else 0.0,
-        'epochs_loss': loss_trajectory
+        'epochs_loss': loss_trajectory,
+        'epochs_kd_loss': kd_loss_trajectory,
+        'epochs_feat_loss': feat_loss_trajectory,
+        'epochs_attn_loss': attn_loss_trajectory,
+        'epochs_rel_loss': rel_loss_trajectory
     }
     with open(f"{out_dir}/train_metrics.json", "w") as f:
         json.dump(metrics, f, indent=4)
