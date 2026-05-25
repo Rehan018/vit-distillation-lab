@@ -2,7 +2,8 @@
 Run all CIFAR-100 evaluations and auto-fill README.md results.
 
 Evaluates: Teacher, Baseline, Vanilla KD, Feature KD lam0_1,
-           Attention KD Only, Relational KD Only, Feature KD lam1_0, lam0_01
+           Attention KD Only, Relational KD Only, DKD, tuned Combined KD,
+           CLS-only, Patch-only, ViT-Small baseline/Feature KD, Feature KD lam1_0, lam0_01
 
 Then reads all outputs/*.json and patches the README tables.
 """
@@ -13,16 +14,22 @@ import sys
 import re
 
 VENV_PYTHON = ".venv/bin/python"
-SUBSET = 5000
-EPOCHS = 5
+SUBSET = 1000
+EPOCHS = 3
 
 EXPERIMENTS = [
-    ("teacher",           "configs/baseline.yaml",          "teacher",  None),
+    ("teacher_ceiling",   "configs/baseline.yaml",          "teacher",  None),
     ("baseline",          "configs/baseline.yaml",          "student",  "checkpoints/baseline.pt"),
     ("vanilla_kd",        "configs/kd_baseline.yaml",       "student",  "checkpoints/vanilla_kd.pt"),
     ("feature_kd_lam0_1", "configs/feature_kd_lam0_1.yaml", "student",  "checkpoints/feature_kd_lam0_1.pt"),
     ("attention_kd_only", "configs/attention_kd_only.yaml", "student",  "checkpoints/attention_kd_only.pt"),
     ("relational_kd_only","configs/relational_kd_only.yaml","student",  "checkpoints/relational_kd_only.pt"),
+    ("dkd",               "configs/dkd.yaml",               "student",  "checkpoints/dkd.pt"),
+    ("combined_feat_attn","configs/combined_feat_attn.yaml","student",  "checkpoints/combined_feat_attn.pt"),
+    ("feature_kd_cls_only","configs/feature_kd_cls_only.yaml","student","checkpoints/feature_kd_cls_only.pt"),
+    ("feature_kd_patch_only","configs/feature_kd_patch_only.yaml","student","checkpoints/feature_kd_patch_only.pt"),
+    ("baseline_small",    "configs/baseline_small.yaml",    "student",  "checkpoints/baseline_small.pt"),
+    ("feature_kd_small",  "configs/feature_kd_small.yaml",  "student",  "checkpoints/feature_kd_small.pt"),
     ("feature_kd_lam1_0", "configs/feature_kd_lam1_0.yaml", "student",  "checkpoints/feature_kd_lam1_0.pt"),
     ("feature_kd_lam0_01","configs/feature_kd_lam0_01.yaml","student",  "checkpoints/feature_kd_lam0_01.pt"),
 ]
@@ -69,24 +76,24 @@ def patch_readme(results):
 
     teacher_pets = "91.90%"
     baseline_pets = "53.80%"
-    teacher_c100 = f"{results.get('teacher', 'TBD')}%" if results.get('teacher') else "TBD"
-    baseline_c100 = f"{results.get('baseline', 'TBD')}%" if results.get('baseline') else "TBD"
+    teacher_c100 = f"{results.get('teacher_ceiling', 'No artifact')}%" if results.get('teacher_ceiling') else "No artifact"
+    baseline_c100 = f"{results.get('baseline', 'No artifact')}%" if results.get('baseline') else "No artifact"
 
     content = re.sub(
-        r'\| \*\*Teacher \(ViT-Large\)\*\* \| 307M \| \*\*91\.90%\*\* \| TBD \| TBD \| TBD \|',
-        f'| **Teacher (ViT-Large)** | 307M | **91.90%** | **{teacher_c100}** | TBD | TBD |',
+        r'\| \*\*Teacher \(ViT-Large\)\*\* \| 307M \| \*\*91\.90%\*\* \| No artifact \| No artifact \| No artifact \|',
+        f'| **Teacher (ViT-Large)** | 307M | **91.90%** | **{teacher_c100}** | No artifact | No artifact |',
         content
     )
     content = re.sub(
-        r'\| \*\*Student Baseline \(No KD\)\*\* \| 5\.7M \| \*\*53\.80%\*\* \| TBD \| TBD \| TBD \|',
-        f'| **Student Baseline (No KD)** | 5.7M | **53.80%** | **{baseline_c100}** | TBD | TBD |',
+        r'\| \*\*Student Baseline \(ViT-Tiny, No KD\)\*\* \| 5\.7M \| \*\*53\.80%\*\* \| No artifact \| No artifact \| No artifact \| No artifact \|',
+        f'| **Student Baseline (ViT-Tiny, No KD)** | 5.7M | **53.80%** | **{baseline_c100}** | No artifact | No artifact | No artifact |',
         content
     )
     def patch_row(text, method_label, config_label, pets_acc, c100_acc):
         escaped_method = re.escape(method_label)
         escaped_config = re.escape(config_label)
-        c100_str = f"**{c100_acc}%**" if c100_acc else "TBD"
-        pattern = rf'(\| {escaped_method} \| {escaped_config} \| [^|]+ \|) TBD (\| TBD \| TBD \|)'
+        c100_str = f"**{c100_acc}%**" if c100_acc else "No artifact"
+        pattern = rf'(\| {escaped_method} \| {escaped_config} \| [^|]+ \|) No artifact (\| No artifact \| No artifact \|)'
         replacement = rf'\g<1> {c100_str} \2'
         return re.sub(pattern, replacement, text)
 
@@ -96,6 +103,10 @@ def patch_readme(results):
         ("**Feature KD (λ=0.1)**","`feature_kd_lam0_1.yaml`", results.get("feature_kd_lam0_1")),
         ("**Attention KD Only**", "`attention_kd_only.yaml`", results.get("attention_kd_only")),
         ("**Relational KD Only**","`relational_kd_only.yaml`",results.get("relational_kd_only")),
+        ("**DKD**",               "`dkd.yaml`",               results.get("dkd")),
+        ("**Combined Feat+Attn**", "`combined_feat_attn.yaml`",results.get("combined_feat_attn")),
+        ("**Feature KD (CLS-only)**","`feature_kd_cls_only.yaml`",results.get("feature_kd_cls_only")),
+        ("**Feature KD (Patch-only)**","`feature_kd_patch_only.yaml`",results.get("feature_kd_patch_only")),
     ]
     for method, config_label, acc in rows:
         if acc:

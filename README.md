@@ -8,16 +8,19 @@ A modular framework for comparing knowledge distillation strategies for Vision T
 
 ## Abstract
 
-This project compares seven ViT distillation strategies under controlled conditions using a ViT-Large teacher and two student architectures (ViT-Tiny and ViT-Small). All methods are evaluated with frozen-backbone linear probing on two classification datasets (Oxford Pets, CIFAR-100) and frozen-backbone dense prediction on NYUv2 depth estimation and Pascal VOC segmentation.
+This project implements a modular ViT distillation framework with a ViT-Large teacher and ViT-Tiny / ViT-Small students. The code supports logit KD, feature KD, attention KD, relational KD, DKD, combined objectives, feature-weight ablations, CLS-vs-patch ablations, and student-capacity scaling.
+
+The stored experiment artifacts now provide Oxford Pets, CIFAR-100, NYUv2 depth, and Pascal VOC segmentation quick-probe results for the core ViT-Tiny strategies, plus ViT-Small baseline and Feature KD scaling runs. CIFAR-100 was evaluated with a 1k subset and 3 probe epochs; NYUv2 and VOC were evaluated with 80 train / 80 validation samples and 2 probe epochs. These are reduced-subset transfer probes, so the numbers should be read as directional comparisons rather than benchmark-ready scores.
 
 Key findings:
 
-- Feature KD with moderate constraint weight (λ=0.1) provides the best classification transfer on ViT-Tiny, recovering ~42% of the teacher-student accuracy gap on Oxford Pets
-- Strong feature constraints (λ=1.0) cause representation collapse — lower reconstruction error does not mean better downstream performance
-- DKD (Decoupled KD) outperforms Vanilla KD by separating target and non-target class knowledge, allowing the student to better absorb inter-class confusion structure
-- Attention KD shows disproportionate benefits on dense prediction tasks (depth, segmentation) compared to classification, confirming that spatial attention patterns transfer spatial reasoning more effectively than logit or feature supervision
-- ViT-Small students consistently outperform ViT-Tiny across all methods, but the *relative ranking* of distillation methods is preserved — Feature KD remains optimal regardless of student capacity
-- Teacher supervision acts as a powerful regularizer: the unguided baseline shows ~7× higher variance than Vanilla KD across seeds
+- DKD is the strongest completed ViT-Tiny run on Oxford Pets and CIFAR-100, improving Pets from 53.80% to 79.10% (+25.30 points) and CIFAR-100 from 15.80% to 29.30% (+13.50 points).
+- Dense tasks diverge: Feature KD Patch-only is best on NYUv2 depth (RMSE 1.6067, δ1 33.55), while DKD / Relational / Attention KD are strongest on VOC mIoU among ViT-Tiny rows.
+- ViT-Small scaling lifts the no-KD baseline to 83.60% Pets and 42.00% CIFAR-100; ViT-Small Feature KD reaches 87.00% Pets and 48.10% CIFAR-100.
+- Strong feature constraints (λ=1.0) underperform λ=0.1, supporting the hypothesis that direct representation matching can overconstrain a tiny student.
+- Attention KD, Relational KD, CLS-only Feature KD, Patch-only Feature KD, and tuned Combined KD all substantially beat the no-KD ViT-Tiny baseline on Oxford Pets.
+- Teacher supervision acts as a powerful regularizer: the 3-seed baseline has 8.36% standard deviation, while Vanilla KD drops to 1.05%.
+- The dense-task probes now support concrete cross-task analysis: patch-token supervision helps depth more than CLS-only supervision, while relation/attention-style objectives are more competitive for segmentation.
 
 These experiments were run on reduced dataset subsets for rapid iteration. The observed trends should be interpreted as directional findings, not benchmark-ready numbers.
 
@@ -121,9 +124,9 @@ $$\mathcal{L}_{\text{DKD}} = \alpha \mathcal{L}_{\text{CE}} + \beta \cdot \text{
 All evaluations use frozen backbone weights — only the lightweight head is trained:
 
 1. **Oxford Pets** (37 classes) — linear probe classification, top-1 accuracy
-2. **CIFAR-100** (100 classes) — linear probe classification, top-1 accuracy (5k subset)
-3. **NYUv2** — monocular depth estimation with conv decoder, RMSE and δ1
-4. **Pascal VOC** — semantic segmentation with conv decoder, mIoU
+2. **CIFAR-100** (100 classes) — linear probe classification, top-1 accuracy (1k subset, 3 probe epochs)
+3. **NYUv2** — monocular depth estimation with conv decoder, RMSE and δ1 (80/80 subset, 2 probe epochs; prepared from Hugging Face parquet conversion after the official `.mat` download stalled)
+4. **Pascal VOC** — semantic segmentation with conv decoder, mIoU (80/80 subset, 2 probe epochs)
 
 ---
 
@@ -149,26 +152,49 @@ Early runs with λ_feature=1.0 collapsed to ~1% accuracy — the student was spe
 
 ## Results
 
-### Teacher Ceiling
+### Artifact Coverage
 
-| Model | Params | Oxford Pets | CIFAR-100 |
-|---|---|---|---|
-| **Teacher (ViT-Large)** | 307M | **91.90%** | **86.68%** |
-| **Student Baseline (ViT-Tiny, No KD)** | 5.7M | **53.80%** | **35.20%** |
+| Assignment item | Implementation status | Result status in current checkout |
+|---|---|---|
+| ViT-Large teacher / ViT-Tiny student | Implemented | Oxford Pets result present |
+| ViT-Small student scaling | Configs implemented (`*_small.yaml`) | Baseline and Feature KD run on Oxford Pets |
+| 5-7 distillation strategies | Baseline, Vanilla KD, Feature KD, Attention KD, Relational KD, DKD, tuned Combined KD, CLS-only, and Patch-only implemented | Oxford Pets result present for each selected Tiny row |
+| Oxford Pets classification | Implemented and run | Complete for stored core Tiny runs |
+| CIFAR-100 classification | Implemented and run | Complete for teacher, core Tiny rows, ViT-Small baseline, and ViT-Small Feature KD |
+| NYUv2 depth | Implemented and run | Complete for teacher, core Tiny rows, ViT-Small baseline, and ViT-Small Feature KD |
+| Pascal VOC segmentation | Implemented and run | Complete for teacher, core Tiny rows, ViT-Small baseline, and ViT-Small Feature KD |
+| Multi-seed variance | Implemented and run | Complete for baseline, Vanilla, Feature, Attention, Relational |
+| Loss curves / plots | Implemented | Present under `outputs/*.png`, including final classification, dense-task, and scaling plots |
 
-### Cross-Task Results — ViT-Tiny Student (Seed 42)
+### Teacher Ceiling and Baseline
 
-| # | Method | Config | Pets Acc | CIFAR-100 Acc | Notes |
-|---|---|---|---|---|---|
-| E0 | **Baseline (No KD)** | `baseline.yaml` | 53.80% | 35.20% | No teacher supervision |
-| E1 | **Vanilla KD** | `kd_baseline.yaml` | 64.40% | 42.10% | Temperature-scaled KL divergence |
-| E2 | **Feature KD (λ=0.1)** | `feature_kd_lam0_1.yaml` | **69.50%** | **45.80%** | Optimal feature constraint weight |
-| E3 | **Attention KD Only** | `attention_kd_only.yaml` | 68.10% | 43.60% | Spatial attention transfer |
-| E4 | **Relational KD Only** | `relational_kd_only.yaml` | 67.90% | 43.20% | Batch geometry matching |
-| E5 | **DKD** | `dkd.yaml` | 66.80% | 44.50% | Decoupled target/non-target KD |
-| E6 | **Combined Feat+Attn** | `combined_feat_attn.yaml` | 68.90% | 44.20% | Feature (λ=0.1) + Attention |
-| E7 | **Feature KD (CLS-only)** | `feature_kd_cls_only.yaml` | 67.20% | 44.00% | CLS token alignment only |
-| E8 | **Feature KD (Patch-only)** | `feature_kd_patch_only.yaml` | 65.40% | 40.80% | Patch token alignment only |
+| Model | Params | Oxford Pets Acc | CIFAR-100 Acc | NYUv2 RMSE | NYUv2 δ1 | VOC mIoU |
+|---|---|---:|---:|---:|---:|---:|
+| **Teacher (ViT-Large)** | 307M | **91.90%** | **79.90%** | **2.9877** | **2.67%** | **15.11%** |
+| **Student Baseline (ViT-Tiny, No KD)** | 5.7M | **53.80%** | **15.80%** | **2.9953** | **0.00%** | **6.09%** |
+
+### ViT-Tiny Distillation Results (Seed 42)
+
+| # | Method | Config | Pets Acc | Pets gain vs baseline | CIFAR-100 Acc | NYUv2 RMSE / δ1 | VOC mIoU | Artifact note |
+|---|---|---|---:|---:|---:|---:|---:|---|
+| E0 | **Baseline (No KD)** | `baseline.yaml` | 53.80% | +0.00% | 15.80% | 2.9953 / 0.00% | 6.09% | Present |
+| E1 | **Vanilla KD** | `kd_baseline.yaml` | 64.40% | +10.60% | 18.80% | 2.8029 / 0.70% | 8.95% | Present |
+| E2 | **Feature KD (λ=0.1)** | `feature_kd_lam0_1.yaml` | 69.50% | +15.70% | 16.90% | 1.7741 / 27.36% | 6.99% | Present |
+| E3 | **Attention KD Only** | `attention_kd_only.yaml` | 68.10% | +14.30% | 22.30% | 2.5888 / 2.93% | 10.46% | Present |
+| E4 | **Relational KD Only** | `relational_kd_only.yaml` | 67.90% | +14.10% | 22.20% | 2.5759 / 3.19% | 10.63% | Present |
+| E5 | **DKD** | `dkd.yaml` | **79.10%** | **+25.30%** | **29.30%** | 3.0818 / 0.00% | **11.05%** | Present |
+| E6 | **Combined Feat+Attn** | `combined_feat_attn.yaml` | 75.60% | +21.80% | 18.30% | 2.0194 / 18.39% | 6.00% | Present |
+| E7 | **Feature KD (CLS-only)** | `feature_kd_cls_only.yaml` | 75.20% | +21.40% | 22.60% | 2.8533 / 0.33% | 10.02% | Present |
+| E8 | **Feature KD (Patch-only)** | `feature_kd_patch_only.yaml` | 74.90% | +21.10% | 18.00% | **1.6067 / 33.55%** | 6.00% | Present |
+
+### Legacy Combined Runs
+
+These runs exist in `outputs/`, but they are intentionally separated from the deconfounded table because their configs combine multiple objectives and use the strong λ_feature=1.0 setting.
+
+| Method | Config | Pets Acc | Why separated |
+|---|---|---:|---|
+| Attention KD + Feature KD | `attention_kd.yaml` | 63.30% | Attention loss is confounded with λ_feature=1.0 feature matching |
+| Relational KD + Feature + Attention | `relational_kd.yaml` | 65.20% | Relational, attention, and strong feature KD are active together |
 
 ### Feature KD λ Ablation (Seed 42)
 
@@ -180,13 +206,15 @@ Early runs with λ_feature=1.0 collapsed to ~1% accuracy — the student was spe
 
 ### Student Model Scaling: ViT-Small (22M params, 384D, 6 heads)
 
-| Method | ViT-Tiny Pets | ViT-Small Pets | Δ (Small−Tiny) |
-|---|---|---|---|
-| **Baseline** | 53.80% | 68.50% | +14.70% |
-| **Vanilla KD** | 64.40% | 74.20% | +9.80% |
-| **Feature KD (λ=0.1)** | 69.50% | 77.30% | +7.80% |
-| **Attention KD** | 68.10% | 76.80% | +8.70% |
-| **Relational KD** | 67.90% | 75.60% | +7.70% |
+The assignment asks for student model scaling. The current artifacts include a minimal ViT-Small comparison for the no-KD baseline and Feature KD. These two runs isolate whether gains come from extra capacity, distillation, or both.
+
+| Method | Tiny Pets | Tiny CIFAR | Tiny NYUv2 RMSE / δ1 | Tiny VOC | Small config | Small Pets | Small CIFAR | Small NYUv2 RMSE / δ1 | Small VOC |
+|---|---:|---:|---:|---:|---|---:|---:|---:|---:|
+| **Baseline** | 53.80% | 15.80% | 2.9953 / 0.00% | 6.09% | `baseline_small.yaml` | **83.60%** | **42.00%** | **1.7369 / 25.55%** | **11.06%** |
+| **Feature KD (λ=0.1)** | 69.50% | 16.90% | **1.7741 / 27.36%** | 6.99% | `feature_kd_small.yaml` | **87.00%** | **48.10%** | 2.1021 / 13.94% | **13.91%** |
+| **Vanilla KD** | 64.40% | 18.80% | 2.8029 / 0.70% | 8.95% | `vanilla_kd_small.yaml` | No artifact | No artifact | No artifact | No artifact |
+| **Attention KD** | 68.10% | 22.30% | 2.5888 / 2.93% | 10.46% | `attention_kd_small.yaml` | No artifact | No artifact | No artifact | No artifact |
+| **Relational KD** | 67.90% | 22.20% | 2.5759 / 3.19% | 10.63% | `relational_kd_small.yaml` | No artifact | No artifact | No artifact | No artifact |
 
 ### Multi-Seed Variance Analysis (3 Seeds: 42, 123, 456) — ViT-Tiny
 
@@ -202,37 +230,67 @@ Early runs with λ_feature=1.0 collapsed to ~1% accuracy — the student was spe
 
 ### Visualizations
 
-The master script automatically generates comparison plots and copies them to the `assets/` directory:
+Final report figures are written under `outputs/`:
 
-![Deconfounded Experiments Comparison](assets/deconfounded_experiments_plot.png)
-*Figure 1: Comparison of baseline, vanilla KD, and deconfounded distillation methods across tasks.*
+![Final Classification Transfer](outputs/final_classification_transfer.png)
+*Figure 1: Oxford Pets and CIFAR-100 classification transfer across Tiny distillation strategies.*
 
-![Feature KD Weight Ablation](assets/feature_kd_ablation_plot.png)
-*Figure 2: Analysis of the feature distillation loss constraint weight (λ) on downstream transfer.*
+![Final Dense Transfer](outputs/final_dense_transfer.png)
+*Figure 2: NYUv2 depth and Pascal VOC segmentation quick probes across Tiny distillation strategies.*
+
+![Final Student Scaling](outputs/final_student_scaling.png)
+*Figure 3: Tiny-vs-Small scaling for baseline and Feature KD on classification tasks.*
+
+![Deconfounded Experiments Comparison](outputs/deconfounded_experiments_plot.png)
+*Figure 4: Comparison of baseline, vanilla KD, and deconfounded distillation methods across tasks.*
+
+![Feature KD Weight Ablation](outputs/feature_kd_ablation_plot.png)
+*Figure 5: Analysis of the feature distillation loss constraint weight (λ) on downstream transfer.*
 
 ---
 
 ## Analysis
 
-### Classification vs. Dense Prediction: Method Rankings Diverge
+### Assignment Compliance Audit
 
-A central question from the assignment is whether KD methods behave differently on classification vs. spatially-structured tasks. Our results confirm they do:
+**What is strong:** The code is modular enough for the assignment: each loss lives in `distillation/losses/`, model choice and loss flags live in YAML, projection is isolated in `distillation/projector.py`, and downstream heads/evaluators are separated by task. The core Tiny experiments and multi-seed analysis are backed by saved artifacts.
 
-**Classification (Oxford Pets, CIFAR-100)**: Feature KD (λ=0.1) > Combined Feat+Attn > Attention KD > Relational KD > DKD > Vanilla KD > Baseline
+**What remains before a benchmark-style submission:** The current checkout now has a complete reduced-subset matrix for the selected rows. For a stronger final submission, rerun the same matrix on full dataset splits and add the remaining ViT-Small variants (Vanilla, Attention, Relational, and possibly DKD) to separate capacity effects from objective effects.
 
-**Dense prediction (NYUv2 depth, VOC segmentation)**: Attention KD and Combined methods show disproportionate gains relative to classification-only improvements.
+**Important bug fixed during audit:** teacher evaluations previously used `configs/baseline.yaml` and wrote into `outputs/baseline/`, which can overwrite or contaminate student baseline metrics. The evaluator scripts now route `--model_type teacher` results to `outputs/teacher_ceiling/`.
 
-**Why the divergence?** Classification uses the CLS token — a single global vector. Dense prediction uses all 196 patch tokens — spatially arranged. Methods that improve patch-level representations (Attention KD, patch-only Feature KD) benefit spatial tasks more than methods that primarily improve the global summary (Vanilla KD, DKD). The CLS-only vs Patch-only Feature KD ablation confirms this: CLS-only achieves 67.20% on Pets (strong classification) but weaker spatial transfer, while Patch-only achieves 65.40% on Pets (weaker classification) but stronger depth estimation — the CLS token contributes to classification but patch tokens drive spatial understanding.
+### Why These Approaches Were Chosen
+
+| Approach | Reasoning |
+|---|---|
+| Vanilla KD | Establishes the canonical Hinton baseline and tests whether soft logits alone transfer useful class-similarity information. |
+| Feature KD | Directly follows the ViTKD motivation: intermediate transformer features carry richer representational structure than final logits. The λ sweep tests how much mimicry a small student can tolerate. |
+| Attention KD | Attention maps are token-by-token spatial relation matrices, so they are attractive for dense prediction and avoid embedding-dimension mismatch. |
+| Relational KD | Batch geometry matching is dimension-agnostic and tests whether preserving sample relationships transfers better than matching absolute coordinates. |
+| DKD | Separates target-class and non-target-class knowledge, which is useful when fine-grained classes have meaningful confusion structure. |
+| Combined Feature + Attention | Tests whether semantic feature alignment and spatial attention alignment are complementary once the feature weight is tuned. |
+| CLS-only vs Patch-only | Directly probes the ViT design split: CLS supervision should favor classification, while patch-token supervision should matter more for depth/segmentation. |
+| ViT-Small scaling | Measures whether better performance comes from distillation methodology or simply from giving the student more capacity. |
+
+### Classification vs. Dense Prediction Hypothesis
+
+The classification and dense prediction rankings diverge. On Oxford Pets and CIFAR-100, DKD is strongest among ViT-Tiny rows: it reaches 79.10% Pets and 29.30% CIFAR-100, versus the 53.80% / 15.80% baseline. That fits the motivation for DKD: the main useful signal is the teacher's class-confusion structure, especially among fine-grained categories.
+
+On NYUv2 depth, Patch-only Feature KD is best among ViT-Tiny rows (RMSE 1.6067, δ1 33.55), followed by full Feature KD (1.7741, 27.36) and Combined Feature+Attention (2.0194, 18.39). CLS-only Feature KD does not transfer the same depth benefit (2.8533, 0.33). This supports the architectural hypothesis: depth prediction needs spatially arranged patch-token information, while CLS alignment mostly improves global categorization.
+
+On Pascal VOC segmentation, the strongest Tiny rows are DKD (11.05 mIoU), Relational KD (10.63), Attention KD (10.46), and CLS-only Feature KD (10.02), all ahead of the 6.09 baseline. The relational and attention results are consistent with the idea that segmentation benefits from token-token structure, not only from final class logits. Patch-only Feature KD did not help VOC in this quick probe despite helping NYUv2 depth, which suggests the segmentation head may need either longer training or stronger multi-scale features before patch supervision pays off.
+
+The teacher ceiling is also modest in the reduced dense probes (15.11 VOC mIoU, 2.9877 NYUv2 RMSE), so these dense numbers should be treated as comparative evidence about the distilled backbones and lightweight heads, not as fully optimized task performance.
 
 ### Feature KD: The Regularization Sweet Spot
 
 The λ ablation reveals a non-obvious dynamic: lowering feature reconstruction loss does NOT always improve downstream performance. The λ=1.0 config achieves the lowest feature MSE during training but scores only 63.40% — *worse* than Vanilla KD (64.40%). The optimal λ=0.1 leaves the student room to develop its own task-discriminative boundaries rather than perfectly mimicking teacher features that it cannot fully represent in 192D.
 
-This finding has a direct analogy to the bias-variance tradeoff: λ=1.0 creates a high-bias student that memorizes teacher features but cannot generalize; λ=0.01 is underconstrained and behaves like Vanilla KD; λ=0.1 hits the sweet spot. The fact that λ=0.01 matches Vanilla KD's performance (both ~64.4%) suggests that at very low weights, the feature loss has negligible gradient contribution and the student is effectively just doing logit distillation.
+This finding has a direct analogy to the bias-variance tradeoff: λ=1.0 creates a high-bias student that follows the teacher feature target too rigidly, while λ=0.01 is underconstrained and lands close to Vanilla KD. λ=0.1 gives the student a useful representation target without consuming all of its limited capacity.
 
 ### DKD: Why Decoupling Helps Fine-Grained Classification
 
-DKD with γ=8.0 outperforms Vanilla KD on CIFAR-100 (44.50% vs 42.10%) but shows smaller gains on Oxford Pets (66.80% vs 64.40%). This aligns with the paper's hypothesis: NCKD amplifies inter-class confusion structure, which is more valuable when there are 100 classes (CIFAR-100) than 37 (Oxford Pets). With fewer classes, the teacher's confusion matrix is sparser, so there's less non-target dark knowledge to transfer.
+DKD is now the strongest Oxford Pets ViT-Tiny run: 79.10%, a +25.30 point gain over the no-KD baseline and +14.70 points over Vanilla KD. This supports the design choice for fine-grained classification: the useful teacher signal is not just the correct class probability, but the ranked confusion among visually similar non-target classes.
 
 ### KD as Implicit Regularization
 
@@ -242,16 +300,11 @@ Attention KD shows higher variance (4.99%) than Vanilla KD (1.05%), despite high
 
 ### Student Model Scaling: Capacity Gap Matters
 
-ViT-Small (384D, 22M) consistently outperforms ViT-Tiny (192D, 5.7M) across all methods. Key observations:
-
-1. **Baseline gap narrows dramatically**: ViT-Small baseline (68.50%) already exceeds most ViT-Tiny KD methods. This shows that model capacity alone recovers a large portion of the teacher-student gap.
-2. **Distillation still helps**: ViT-Small + Feature KD (77.30%) is substantially better than ViT-Small baseline (68.50%), showing that distillation provides value beyond what raw capacity gives.
-3. **Diminishing marginal returns**: The gap between Vanilla KD and Feature KD shrinks from 5.1% (Tiny) to 3.1% (Small). With a smaller capacity gap (1024→384 vs 1024→192), simpler methods close the gap — the projection bottleneck is less severe.
-4. **Attention KD benefits from reduced head mismatch**: ViT-Small has 6 heads (vs Tiny's 3), making the 16→6 averaging less lossy than 16→3. This may explain why Attention KD shows stronger relative gains with ViT-Small.
+ViT-Small scaling shows that raw capacity matters a lot: the no-KD baseline jumps from 53.80% (Tiny) to 83.60% (Small). Distillation still adds value on top of capacity: ViT-Small Feature KD reaches 87.00%, +3.40 points over the Small baseline. The relative KD gain is smaller than for ViT-Tiny, which is expected because the larger student already has enough capacity to encode much of the task after fine-tuning. ViT-Small also reduces the projection gap from 1024→192 to 1024→384 and the attention-head mismatch from 16→3 to 16→6, so the remaining Small configs are worth running next.
 
 ### Confounding in Multi-Objective Experiments
 
-Early experiments combined feature + attention + relational losses simultaneously. The combined Attention KD (with Feature KD at λ=1.0) performed worse than either method in isolation. This was initially confusing, but isolating each objective revealed that the rigid λ=1.0 feature constraint was the bottleneck. The properly-tuned Combined Feat+Attn (λ=0.1) experiment fixes this, achieving 68.90% — nearly matching Feature KD alone. This experience reinforced the importance of controlled single-variable experiments before making causal claims about method effectiveness.
+Early experiments combined feature + attention + relational losses simultaneously. The stored legacy runs show that the combined Attention KD config with λ_feature=1.0 reaches only 63.30%, below the isolated Attention KD result of 68.10%. This supports the decision to deconfound objectives and tune λ_feature before evaluating a combined method.
 
 ---
 
@@ -391,9 +444,9 @@ python download_nyuv2.py
 1. **Scale**: Experiments use reduced subsets (1000 Oxford Pets, 5000 CIFAR-100). Multi-seed analysis shows this introduces significant variance, particularly for structural methods. Scaling to full datasets would strengthen conclusions.
 2. **ImageNet-1K**: Full ImageNet-1K evaluation was deferred due to compute constraints. The framework supports adding it with minimal changes — only a dataset loader and evaluation call are needed.
 3. **Dense prediction scope**: NYUv2 depth evaluation uses a simple conv decoder on a 224×224 subset. This is adequate for comparative trend analysis between KD methods but not competitive with specialized depth estimation models.
-4. **Attention head reduction**: Head-averaging in Attention KD is a simplification. A learnable attention projection could preserve fine-grained head relationships — the ViT-Small results (16→6 averaging) suggest this matters.
+4. **Attention head reduction**: Head-averaging in Attention KD is a simplification. A learnable attention projection could preserve fine-grained head relationships; the ViT-Small configs are included partly to test whether the smaller 16→6 head mismatch helps.
 5. **Statistical power**: N=3 seeds provides directional trends but not rigorous statistical significance. N≥5 with bootstrap confidence intervals would be more defensible.
-6. **DKD γ sensitivity**: We used γ=8.0 from the paper but did not ablate this parameter. The optimal γ likely depends on the number of classes and their visual similarity.
+6. **DKD γ sensitivity**: The DKD config uses γ=8.0 from the paper and performs best on Oxford Pets, but γ has not been ablated. The optimal value likely depends on class count and visual similarity.
 7. **No progressive distillation**: All experiments use single-stage distillation. Multi-stage approaches (e.g., ViT-Large → ViT-Base → ViT-Small → ViT-Tiny) could reduce the capacity gap at each step.
 
 ---

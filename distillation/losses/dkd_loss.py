@@ -49,7 +49,6 @@ class DKDLoss(nn.Module):
 
     def forward(self, student_logits, teacher_logits, targets=None):
         if targets is None:
-            # Fall back to standard KD when no labels available
             kd_loss = F.kl_div(
                 F.log_softmax(student_logits / self.temperature, dim=1),
                 F.softmax(teacher_logits / self.temperature, dim=1),
@@ -57,31 +56,25 @@ class DKDLoss(nn.Module):
             ) * (self.temperature ** 2)
             return kd_loss
 
-        # Hard label loss
         ce = self.ce_loss(student_logits, targets)
 
-        # Softened probabilities
         s_soft = F.softmax(student_logits / self.temperature, dim=1)
         t_soft = F.softmax(teacher_logits / self.temperature, dim=1)
 
-        # Extract target class probabilities
         batch_size = student_logits.size(0)
         target_mask = torch.zeros_like(student_logits, dtype=torch.bool)
         target_mask.scatter_(1, targets.unsqueeze(1), True)
 
-        # Target class probabilities
         s_target = s_soft[target_mask].view(batch_size, 1)
         t_target = t_soft[target_mask].view(batch_size, 1)
 
-        # Non-target class probabilities (renormalized)
+
         s_nontarget = s_soft[~target_mask].view(batch_size, -1)
         t_nontarget = t_soft[~target_mask].view(batch_size, -1)
 
-        # Renormalize non-target distributions
         s_nontarget = s_nontarget / (s_nontarget.sum(dim=1, keepdim=True) + 1e-8)
         t_nontarget = t_nontarget / (t_nontarget.sum(dim=1, keepdim=True) + 1e-8)
 
-        # TCKD: binary KL on target vs non-target split
         s_binary = torch.cat([s_target, 1.0 - s_target], dim=1)
         t_binary = torch.cat([t_target, 1.0 - t_target], dim=1)
         tckd = F.kl_div(
@@ -90,7 +83,6 @@ class DKDLoss(nn.Module):
             reduction='batchmean'
         ) * (self.temperature ** 2)
 
-        # NCKD: KL on renormalized non-target distributions
         nckd = F.kl_div(
             torch.log(s_nontarget + 1e-8),
             t_nontarget,

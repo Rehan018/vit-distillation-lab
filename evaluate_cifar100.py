@@ -92,7 +92,7 @@ def run():
 
     logger.info(f"CIFAR-100 Accuracy: {accuracy:.2f}%")
 
-    exp_name = config['experiment']['name']
+    exp_name = "teacher_ceiling" if args.model_type == "teacher" else config['experiment']['name']
     out_dir = f"outputs/{exp_name}"
     os.makedirs(out_dir, exist_ok=True)
 
