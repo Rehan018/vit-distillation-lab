@@ -1,0 +1,24 @@
+experiment:
+  name: dkd
+
+teacher:
+  model: vit_large_patch16_224
+  embed_dim: 1024
+
+student:
+  model: vit_tiny_patch16_224
+  embed_dim: 192
+
+training:
+  batch_size: 16
+  epochs: 10
+  lr: 0.0001
+  subset_size: 1000
+  seed: 42
+
+distillation:
+  type: dkd
+  temperature: 4.0
+  alpha: 0.7
+  beta: 1.0
+  gamma: 8.0

@@ -8,7 +8,8 @@ class DistillationTrainer:
                  teacher_extractor=None, student_extractor=None,
                  attention_criterion=None, teacher_attn_extractor=None, student_attn_extractor=None,
                  relational_criterion=None,
-                 lambda_kd=1.0, lambda_feat=1.0, lambda_attn=1.0, lambda_rel=1.0):
+                 lambda_kd=1.0, lambda_feat=1.0, lambda_attn=1.0, lambda_rel=1.0,
+                 max_grad_norm=1.0):
         self.teacher = teacher
         self.student = student
         self.criterion = criterion
@@ -36,6 +37,7 @@ class DistillationTrainer:
         self.lambda_feat = lambda_feat
         self.lambda_attn = lambda_attn
         self.lambda_rel = lambda_rel
+        self.max_grad_norm = max_grad_norm
         
         self.teacher.to(self.device)
         self.teacher.eval() 
@@ -105,6 +107,11 @@ class DistillationTrainer:
             
  
             loss.backward()
+            # Gradient clipping for training stability
+            all_params = list(self.student.parameters())
+            if self.projector:
+                all_params += list(self.projector.parameters())
+            torch.nn.utils.clip_grad_norm_(all_params, self.max_grad_norm)
             self.optimizer.step()
             
             total_loss += loss.item()

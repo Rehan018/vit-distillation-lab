@@ -3,6 +3,7 @@ import random
 import numpy as np
 import torch
 import torch.optim as optim
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader, TensorDataset
 
 from utils.config import load_config
@@ -10,6 +11,7 @@ from models.teacher import TeacherModel
 from models.student import StudentModel
 from distillation.trainer import DistillationTrainer
 from distillation.losses.kd_loss import KDLoss
+from distillation.losses.dkd_loss import DKDLoss
 from distillation.losses.feature_loss import FeatureDistillationLoss
 from distillation.losses.attention_loss import AttentionDistillationLoss
 from distillation.losses.relational_loss import RelationalDistillationLoss
@@ -159,8 +161,20 @@ def main():
     )
     
     # Setup criterion and optimizer
-    criterion = KDLoss(temperature=config['distillation']['temperature'], alpha=config['distillation']['alpha'])
+    distill_type = config['distillation'].get('type', 'vanilla')
+    if distill_type == 'dkd':
+        criterion = DKDLoss(
+            temperature=config['distillation']['temperature'],
+            alpha=config['distillation']['alpha'],
+            beta=config['distillation'].get('beta', 1.0),
+            gamma=config['distillation'].get('gamma', 8.0)
+        )
+        logger.info("Using Decoupled Knowledge Distillation (DKD) loss")
+    else:
+        criterion = KDLoss(temperature=config['distillation']['temperature'], alpha=config['distillation']['alpha'])
+    
     optimizer = optim.Adam(student.parameters(), lr=config['training']['lr'])
+    scheduler = CosineAnnealingLR(optimizer, T_max=config['training']['epochs'], eta_min=1e-6)
     
     # Setup trainer
     trainer = DistillationTrainer(
@@ -188,8 +202,9 @@ def main():
     loss_trajectory = []
     for epoch in range(epochs):
         loss = trainer.train_epoch(train_loader)
+        scheduler.step()
         loss_trajectory.append(loss)
-        logger.info(f"Epoch {epoch+1}/{epochs} - Total Loss: {loss:.4f}")
+        logger.info(f"Epoch {epoch+1}/{epochs} - Total Loss: {loss:.4f} - LR: {scheduler.get_last_lr()[0]:.6f}")
         
     metrics = {
         'final_train_loss': loss_trajectory[-1] if loss_trajectory else 0.0,
